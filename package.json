@@ -1,0 +1,41 @@
+{
+  "name": "pinform",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:depth && vite build",
+    "build:depth": "vite build --config vite.depth-worker.config.ts",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "test": "node --experimental-strip-types --test app/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm test -- --run && npm run typecheck && npm run lint"
+  },
+  "dependencies": {
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@eslint/js": "9.39.4",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "6.0.2",
+    "eslint": "9.39.4",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "14.0.0",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.68.0",
+    "vite": "8.0.13"
+  },
+  "type": "module"
+}
