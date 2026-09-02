@@ -573,8 +573,15 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         uniform float uInvert;
         uniform float uPulseStart;
         uniform float uMotion;
+        varying float vRecess;
         float pinLuma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
       ${shader.vertexShader}`;
+      // Pins sitting below their surround (eye sockets, sides of the nose, mouth
+      // corners) go darker, the way valleys on a real pin toy sit in shadow.
+      shader.fragmentShader = `varying float vRecess;\n${shader.fragmentShader}`.replace(
+        '#include <color_fragment>',
+        '#include <color_fragment>\n          diffuseColor.rgb *= 1.0 - vRecess * 0.55;',
+      );
       shader.vertexShader = shader.vertexShader.replace(
         '#include <begin_vertex>',
         `
@@ -612,13 +619,14 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
           // (nose, lips, brow) computed in the depth worker, 0.5 = flat.
           vec2 depthTexel = texture2D(uDepth, depthUv).rg;
           float depthSample = depthTexel.r;
-          float depthBase = depthSample * uRelief * 0.72;
+          float depthBase = depthSample * uRelief * 0.55;
           float depthRelief = depthBase * imprintMask;
           float featureRelief = depthTexel.g * 2.0 - 1.0;
           float detailGate = smoothstep(0.05, 0.26, depthSample);
-          float localDepthDetail = featureRelief * uDetail * 0.12 * uRelief;
+          float localDepthDetail = featureRelief * uDetail * 0.18 * uRelief;
           float cameraMicroDetail = edge * uDetail * 0.58 * uRelief;
           depthRelief += (localDepthDetail + cameraMicroDetail) * detailGate;
+          vRecess = clamp(-featureRelief, 0.0, 1.0) * detailGate * uUseDepth * uUseVideo;
           cameraRelief = mix(cameraRelief, depthRelief, uUseDepth);
 
           float pulseAge = uTime - uPulseStart;
@@ -638,7 +646,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         `,
       );
     };
-    material.customProgramCacheKey = () => 'pinform-camera-relief-v8';
+    material.customProgramCacheKey = () => 'pinform-camera-relief-v9';
 
     const pins = new THREE.InstancedMesh(geometry, material, COLUMNS * ROWS);
     const matrix = new THREE.Matrix4();
@@ -796,8 +804,11 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         rotationCurrent.x = settled.x;
         rotationCurrent.y = settled.y;
       } else {
-        rotationCurrent.x = Math.sin(time * 0.22) * 0.012 * drift;
-        rotationCurrent.y = Math.sin(time * 0.18) * 0.018 * drift;
+        // Sway and lean toward the pointer so raised pins show their shafts
+        // and parallax; head-on, every pin cap shades the same.
+        const pointer = uniforms.uPointer.value;
+        rotationCurrent.x = Math.sin(time * 0.22) * 0.03 * drift - (pointer.y - 0.5) * 0.1;
+        rotationCurrent.y = Math.sin(time * 0.18) * 0.05 * drift + (pointer.x - 0.5) * 0.16;
       }
       toyGroup.rotation.set(rotationCurrent.x, rotationCurrent.y, 0);
       keyLight.position.x = -3.5 + Math.sin(time * 0.28) * 2.2 * drift;

@@ -16,6 +16,7 @@ test('maps the sitter linearly onto the full pin travel and keeps the room flush
     floorPercentile: 0,
     peakPercentile: 1,
     plinth: 0,
+    pressDepth: 1,
   });
 
   assert.deepEqual(Array.from(result), [0, 0, 0, 0, 0, 0, 0, 51, 102, 153, 204, 255]);
@@ -26,6 +27,7 @@ test('raises the whole sitter above the room on a small plinth', () => {
     floorPercentile: 0,
     peakPercentile: 1,
     plinth: 0.2,
+    pressDepth: 1,
   });
 
   assert.deepEqual(Array.from(result), [0, 0, 0, 0, 0, 0, 51, 92, 133, 173, 214, 255]);
@@ -116,4 +118,16 @@ test('does not emboss a depth cliff such as chin over chest or hair over face', 
   const pressed = plateau(24, 16, 0.8, (x) => (x < 12 ? 0.2 : undefined));
 
   assert.ok(featureRelief(pressed, 24, 16).every((value) => value === 128));
+});
+
+test('presses only the nearest part of the sitter so shoulders rest on the plinth', () => {
+  const sitter = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0];
+  const result = normalizeNearDepth(new Float32Array([...ROOM, ...sitter]), {
+    floorPercentile: 0,
+    peakPercentile: 1,
+    plinth: 0,
+    pressDepth: 0.5,
+  });
+
+  assert.deepEqual(Array.from(result.slice(ROOM.length)), [0, 0, 0, 51, 153, 255]);
 });

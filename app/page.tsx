@@ -125,34 +125,34 @@ export default function Home() {
   const captured = cameraState === 'captured';
   const needsBrowserHandoff = cameraIssue === 'unsupported' || cameraIssue === 'unknown';
   const cameraIssueCopy: Record<CameraIssue, string> = {
-    unsupported: 'NO CAMERA DETECTED · CONNECT ONE OR USE ANOTHER DEVICE',
-    denied: 'CAMERA BLOCKED · ALLOW ACCESS IN BROWSER SETTINGS',
-    busy: 'CAMERA BUSY · CLOSE OTHER CAMERA APPS AND RETRY',
-    unknown: 'CAMERA COULDN’T START · TRY CHROME OR SAFARI',
+    unsupported: 'No camera found. Connect one or open this on another device.',
+    denied: 'Camera blocked. Allow access in your browser settings.',
+    busy: 'Camera busy. Close other camera apps and retry.',
+    unknown: 'Camera could not start. Try Chrome or Safari.',
   };
   const statusCopy = cameraIssue && (cameraState === 'error' || cameraState === 'idle')
     ? cameraIssueCopy[cameraIssue]
     : cameraState === 'requesting'
-      ? 'WAITING FOR CAMERA PERMISSION'
+      ? 'Waiting for camera permission'
       : cameraState === 'live'
       ? depthState === 'loading'
         ? depthProgress !== null && depthProgress > 0
-          ? `CAMERA LIVE · LOADING AI DEPTH ${depthProgress}%`
-          : 'CAMERA LIVE · STARTING AI DEPTH…'
+          ? `Camera live · loading AI depth ${depthProgress}%`
+          : 'Camera live · starting AI depth'
         : depthState === 'warming'
-          ? 'CAMERA LIVE · VERIFYING AI INFERENCE…'
+          ? 'Camera live · checking AI inference'
         : depthState === 'fallback'
-          ? `AI DEPTH ERROR · ${summarizeDepthError(depthError ?? '')}`
+          ? `AI depth error · ${summarizeDepthError(depthError ?? '')}`
           : depthState === 'ready-cpu' && depthMode === 'ai'
-            ? 'CAMERA LIVE · AI DEPTH COMPATIBILITY MODE'
+            ? 'Camera live · AI depth, compatibility mode'
           : depthMode === 'ai'
-            ? 'CAMERA LIVE · AI DEPTH ON DEVICE'
-            : 'CAMERA LIVE · CLASSIC RELIEF'
+            ? 'Camera live · AI depth'
+            : 'Camera live · classic relief'
       : cameraState === 'captured'
-        ? 'CAPTURED · CAMERA OFF'
+        ? 'Captured · camera off'
         : cameraState === 'error'
-          ? 'CAMERA UNAVAILABLE · DEMO MODE ACTIVE'
-          : 'PROCEDURAL FIELD · CAMERA OFF';
+          ? 'Camera unavailable'
+          : 'Camera off';
 
   return (
     <main className="experience-shell">
@@ -161,12 +161,11 @@ export default function Home() {
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Pinform home">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
-          <span>PINFORM</span>
-          <small>LIVE KINETIC STUDY</small>
+          <span>Pinform</span>
         </a>
         <div className="privacy-note">
           <span className={`status-dot ${cameraState === 'live' ? 'is-live' : ''}`} />
-          PRIVATE BY DESIGN · YOUR CAMERA NEVER LEAVES THIS DEVICE
+          Camera stays on this device
         </div>
       </header>
 
@@ -188,47 +187,33 @@ export default function Home() {
             onDiagnostic={addDiagnostic}
             onCaptured={handleCaptured}
           />
-          <div className="stage-label stage-label-left">GPU RELIEF FIELD</div>
-          <div className="stage-label stage-label-right">6,144 SILVER PINS · LIVE WEBGL</div>
-          <div className={`live-badge ${cameraActive ? 'is-visible' : ''} ${captured ? 'is-captured' : ''}`}><span /> {captured ? 'CAPTURED' : 'LIVE'}</div>
-          <div className={`rotate-hint ${captured ? 'is-visible' : ''}`}>DRAG TO ROTATE · ARROW KEYS TO NUDGE</div>
+          <div className={`live-badge ${cameraActive ? 'is-visible' : ''} ${captured ? 'is-captured' : ''}`}><span /> {captured ? 'Captured' : 'Live'}</div>
+          <div className={`rotate-hint ${captured ? 'is-visible' : ''}`}>Drag to rotate</div>
         </div>
 
-        <aside className={`control-card ${cameraActive ? 'camera-active' : ''}`} aria-label="Sculpture controls">
-          <div className="control-head">
-            <span className="control-number">01</span>
-            <div>
-              <p className="control-kicker">INPUT SOURCE</p>
-              <h2>{captured ? 'Turn it. Inspect the relief.' : cameraActive ? 'Shape the impression.' : 'See yourself in silver.'}</h2>
-            </div>
-          </div>
-
+        <aside className={`control-card ${cameraActive ? 'camera-active' : ''}`} aria-label="Controls">
           {!cameraActive && needsBrowserHandoff ? (
             <button className="camera-button" type="button" onClick={copyCameraLink}>
-              <span className="camera-icon" aria-hidden="true" />
-              {linkCopied ? 'LINK COPIED' : 'COPY LINK FOR A CAMERA DEVICE'}
+              {linkCopied ? 'Link copied' : 'Copy link for a device with a camera'}
             </button>
           ) : !cameraActive ? (
             <button className="camera-button" type="button" onClick={enableCamera} disabled={cameraState === 'requesting'}>
               <span className="camera-icon" aria-hidden="true" />
-              {cameraState === 'requesting' ? 'REQUESTING ACCESS…' : 'ENABLE CAMERA'}
+              {cameraState === 'requesting' ? 'Requesting access…' : 'Enable camera'}
             </button>
           ) : cameraState === 'live' ? (
             <div className="action-grid">
-              <button className="mode-button capture-action" type="button" onClick={captureImprint}>CAPTURE IMPRINT</button>
-              <button className="mode-button" type="button" onClick={() => sculptureRef.current?.pulse()}>PULSE FIELD</button>
+              <button className="mode-button capture-action" type="button" onClick={captureImprint}>Capture</button>
+              <button className="mode-button" type="button" onClick={() => sculptureRef.current?.pulse()}>Pulse</button>
             </div>
           ) : (
             <div className="action-grid">
-              <button className="mode-button capture-action" type="button" onClick={enableCamera}>RETAKE</button>
-              <button className="mode-button" type="button" onClick={() => sculptureRef.current?.resetView()}>RESET VIEW</button>
+              <button className="mode-button capture-action" type="button" onClick={enableCamera}>Retake</button>
+              <button className="mode-button" type="button" onClick={() => sculptureRef.current?.resetView()}>Reset view</button>
             </div>
           )}
 
-          <div className={`options-panel ${cameraActive ? 'is-visible' : ''}`}>
-            <button className="options-toggle" type="button" aria-label="Show sculpture options">
-              <span>OPTIONS</span><small>FOCUS TO ADJUST</small>
-            </button>
+          {cameraActive && (
             <div className="tuning-controls">
               <div className="depth-mode" aria-label="Depth detector">
                 <button type="button" className={depthMode === 'ai' ? 'is-active' : ''} onClick={() => {
@@ -240,43 +225,38 @@ export default function Home() {
                   }
                 }} aria-busy={depthState === 'loading' || depthState === 'warming'}>
                   {captured && depthState === 'fallback'
-                    ? 'RETAKE FOR AI'
+                    ? 'Retake for AI depth'
                     : depthState === 'fallback'
-                      ? 'RETRY AI DEPTH'
+                      ? 'Retry AI depth'
                       : depthState === 'loading'
-                        ? 'AI LOADING…'
+                        ? 'AI loading…'
                         : depthState === 'warming'
-                          ? 'AI CHECKING…'
-                          : 'AI DEPTH'}
+                          ? 'AI checking…'
+                          : 'AI depth'}
                 </button>
-                <button type="button" className={depthMode === 'classic' ? 'is-active' : ''} onClick={() => setDepthMode('classic')}>CLASSIC</button>
+                <button type="button" className={depthMode === 'classic' ? 'is-active' : ''} onClick={() => setDepthMode('classic')}>Classic</button>
               </div>
               <label>
-                <span>RELIEF</span><output>{Math.round(relief * 100)}</output>
+                <span>Relief</span><output>{Math.round(relief * 100)}</output>
                 <input type="range" min="0.55" max="2" step="0.05" value={relief} onChange={(event) => setRelief(Number(event.target.value))} />
               </label>
               <label>
-                <span>{depthMode === 'ai' ? 'FACIAL DETAIL' : 'EDGE DETAIL'}</span><output>{Math.round(detail * 100)}</output>
+                <span>{depthMode === 'ai' ? 'Facial detail' : 'Edge detail'}</span><output>{Math.round(detail * 100)}</output>
                 <input type="range" min="0" max="5" step="0.05" value={detail} onChange={(event) => setDetail(Number(event.target.value))} />
               </label>
               <div className="micro-actions">
-                <button type="button" className={inverted ? 'is-active' : ''} onClick={() => setInverted((value) => !value)}>INVERT DEPTH</button>
-                <button type="button" onClick={stopCamera}>STOP CAMERA</button>
+                <button type="button" className={inverted ? 'is-active' : ''} onClick={() => setInverted((value) => !value)}>Invert depth</button>
+                <button type="button" onClick={stopCamera}>Stop camera</button>
               </div>
             </div>
-          </div>
+          )}
 
           <p className={`camera-status ${cameraState === 'error' || depthState === 'fallback' ? 'is-error' : ''}`} role="status" aria-live="polite">
             <span /> {statusCopy}
           </p>
-          <p className="control-caption">
-            {needsBrowserHandoff
-              ? 'No camera input is available here. Connect a webcam, use Continuity Camera, or open this link on a device with a camera.'
-              : 'AI depth runs here in your browser. Capture stops the camera and keeps the silver relief on this device.'}
-          </p>
 
           <details className="diagnostics-panel">
-            <summary><span>DIAGNOSTICS</span><small>{diagnostics.length} EVENTS</small></summary>
+            <summary><span>Diagnostics</span><small>{diagnostics.length} events</small></summary>
             <div className="diagnostics-body">
               <pre aria-label="Pinform diagnostic log">
                 {diagnostics.slice(-14).map(({ elapsedMs, message, details }) => (
@@ -285,22 +265,15 @@ export default function Home() {
               </pre>
               <button type="button" onClick={copyDiagnostics}>
                 {diagnosticsCopyState === 'copied'
-                  ? 'DIAGNOSTICS COPIED'
+                  ? 'Copied'
                   : diagnosticsCopyState === 'failed'
-                    ? 'COPY FAILED · SELECT LOG ABOVE'
-                    : 'COPY DIAGNOSTICS'}
+                    ? 'Copy failed · select the log above'
+                    : 'Copy diagnostics'}
               </button>
-              <p>DEVICE CAPABILITIES AND ERRORS ONLY · NO CAMERA IMAGES</p>
             </div>
           </details>
         </aside>
       </section>
-
-      <footer className="footer-line">
-        <span>{captured ? 'DRAG TO ROTATE · TAP TO PULSE' : cameraState === 'live' ? 'CLICK PINS TO CAPTURE' : 'MOVE TO DISTURB · TAP TO PULSE'}</span>
-        <button type="button" onClick={() => sculptureRef.current?.pulse()} aria-label="Pulse the pin field">↓</button>
-        <span>BUILT WITH WEBGL</span>
-      </footer>
     </main>
   );
 }

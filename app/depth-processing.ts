@@ -2,6 +2,8 @@ export interface DepthNormalizationOptions {
   floorPercentile?: number;
   peakPercentile?: number;
   plinth?: number;
+  /** Fraction of the sitter's depth range the press reaches behind the nearest point. */
+  pressDepth?: number;
 }
 
 export function downsampleDepth(
@@ -92,7 +94,9 @@ export function foregroundThreshold(values: Float32Array) {
 /**
  * Press the sitter into the pins like a real pin toy: the room stays flush, the
  * nearest point (nose) bottoms out at full travel, and everything in between is
- * linear so the nose-to-cheek step survives.
+ * linear so the nose-to-cheek step survives. The press only reaches part way
+ * back into the sitter, the way a face pressed into a toy leaves the shoulders
+ * untouched, so the face gets most of the travel.
  */
 export function normalizeNearDepth(
   values: Float32Array,
@@ -100,6 +104,7 @@ export function normalizeNearDepth(
     floorPercentile = 0.03,
     peakPercentile = 0.995,
     plinth = 0.1,
+    pressDepth = 0.6,
   }: DepthNormalizationOptions = {},
 ) {
   const output = new Uint8Array(values.length);
@@ -107,9 +112,10 @@ export function normalizeNearDepth(
   const foreground = finiteSorted(values).filter((value) => value >= threshold);
   if (foreground.length < 2) return output;
 
-  const floor = percentile(foreground, floorPercentile);
-  const range = percentile(foreground, peakPercentile) - floor;
+  const peak = percentile(foreground, peakPercentile);
+  const range = (peak - percentile(foreground, floorPercentile)) * Math.max(1e-3, Math.min(1, pressDepth));
   if (!(range > 1e-6)) return output;
+  const floor = peak - range;
 
   const lift = clamp01(plinth);
   for (let index = 0; index < values.length; index += 1) {

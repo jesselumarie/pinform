@@ -12,11 +12,13 @@ test('keeps AI depth upright and anchors displaced pins', () => {
   assert.match(sculpture, /float pinTravel = clamp/);
 });
 
-test('puts the toy first and reveals options only while focused', () => {
+test('puts the toy first with plain controls and no marketing copy', () => {
   assert.doesNotMatch(page, /Your reflection/);
   assert.doesNotMatch(page, /className="hero-copy"/);
-  assert.match(page, /className="options-toggle"/);
-  assert.match(styles, /\.options-panel:focus-within \.tuning-controls/);
+  assert.doesNotMatch(page, /className="control-head"/);
+  assert.doesNotMatch(page, /className="options-toggle"/);
+  assert.doesNotMatch(page, /KINETIC STUDY|SILVER PINS|BUILT WITH WEBGL/);
+  assert.match(page, /className="tuning-controls"/);
 });
 
 test('uses a full-viewport stage and full-board camera mapping', () => {
@@ -45,9 +47,10 @@ test('adds facial detail only inside the AI depth surface', () => {
 
 test('presses the face linearly like a real pin toy and outlines features at their own scale', () => {
   assert.doesNotMatch(sculpture, /pow\(depthSample/);
-  assert.match(sculpture, /float depthBase = depthSample \* uRelief \* 0\.72/);
+  assert.match(sculpture, /float depthBase = depthSample \* uRelief \* 0\.55/);
   assert.match(sculpture, /THREE\.RGFormat/);
-  assert.match(sculpture, /float localDepthDetail = featureRelief \* uDetail \* 0\.12 \* uRelief/);
+  assert.match(sculpture, /float localDepthDetail = featureRelief \* uDetail \* 0\.18 \* uRelief/);
+  assert.match(sculpture, /diffuseColor\.rgb \*= 1\.0 - vRecess/);
   assert.match(sculpture, /float cameraDetailRadius = mix\(1\.35, 0\.75, clamp\(uDetail \/ 5\.0, 0\.0, 1\.0\)\)/);
   assert.match(sculpture, /float depthRelief = depthBase \* imprintMask/);
 });
