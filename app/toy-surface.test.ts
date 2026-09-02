@@ -37,16 +37,17 @@ test('moves in the same screen direction and captures from the live surface', ()
 });
 
 test('adds facial detail only inside the AI depth surface', () => {
-  assert.match(sculpture, /float depthCurvature = depthSample - depthNeighbors \* 0\.25/);
+  assert.match(sculpture, /float featureRelief = depthTexel\.g \* 2\.0 - 1\.0/);
   assert.match(sculpture, /float detailGate = smoothstep\(0\.05, 0\.26, depthSample\)/);
   assert.match(sculpture, /float cameraMicroDetail = edge \* uDetail \* 0\.58 \* uRelief/);
   assert.match(sculpture, /depthRelief \+= \(localDepthDetail \+ cameraMicroDetail\) \* detailGate/);
 });
 
-test('reserves pin travel for facial features instead of saturating the base face', () => {
-  assert.doesNotMatch(sculpture, /pow\(depthSample, 0\.70 \+ uDetail/);
-  assert.match(sculpture, /float depthBase = pow\(depthSample, 0\.82\) \* uRelief \* 0\.72/);
-  assert.match(sculpture, /float localDepthDetail = depthCurvature \* uDetail \* 0\.95 \* uRelief/);
+test('presses the face linearly like a real pin toy and outlines features at their own scale', () => {
+  assert.doesNotMatch(sculpture, /pow\(depthSample/);
+  assert.match(sculpture, /float depthBase = depthSample \* uRelief \* 0\.72/);
+  assert.match(sculpture, /THREE\.RGFormat/);
+  assert.match(sculpture, /float localDepthDetail = featureRelief \* uDetail \* 0\.12 \* uRelief/);
   assert.match(sculpture, /float cameraDetailRadius = mix\(1\.35, 0\.75, clamp\(uDetail \/ 5\.0, 0\.0, 1\.0\)\)/);
   assert.match(sculpture, /float depthRelief = depthBase \* imprintMask/);
 });

@@ -18,6 +18,14 @@ import { applyDragRotation, settleRotation, type Rotation } from './rotation';
 const COLUMNS = 96;
 const ROWS = 64;
 const SPACING = 0.136;
+const DEPTH_CHANNELS = 2;
+
+/** Flush pins (R = 0) with flat feature relief (G = 128). */
+function flattenDepth<T extends Uint8Array | Float32Array>(data: T) {
+  data.fill(0);
+  for (let index = 1; index < data.length; index += DEPTH_CHANNELS) data[index] = 128;
+  return data;
+}
 
 export type CameraState = 'idle' | 'requesting' | 'live' | 'captured' | 'error';
 export type DepthMode = 'ai' | 'classic';
@@ -95,7 +103,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
   const depthFrameCountRef = useRef(0);
   const depthLastFrameAtRef = useRef(0);
   const depthCaptureErrorLoggedRef = useRef(false);
-  const depthSmoothedRef = useRef(new Float32Array(COLUMNS * ROWS));
+  const depthSmoothedRef = useRef(flattenDepth(new Float32Array(COLUMNS * ROWS * DEPTH_CHANNELS)));
   const depthModeRef = useRef(depthMode);
   const isCapturedRef = useRef(false);
   const rotationTargetRef = useRef<Rotation>({ x: 0, y: 0 });
@@ -112,7 +120,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
   const updateDepthTexture = useCallback((next: Uint8Array) => {
     const texture = depthTextureRef.current;
     const uniforms = uniformsRef.current;
-    if (!texture || !uniforms || next.length !== COLUMNS * ROWS) return;
+    if (!texture || !uniforms || next.length !== COLUMNS * ROWS * DEPTH_CHANNELS) return;
     const pixels = texture.image.data as Uint8Array;
     const smoothed = depthSmoothedRef.current;
     for (let index = 0; index < next.length; index += 1) {
@@ -381,9 +389,9 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
       uniformsRef.current.uVideo.value = texture;
       uniformsRef.current.uVideoAspect.value = video.videoWidth / video.videoHeight;
       uniformsRef.current.uUseDepth.value = 0;
-      depthSmoothedRef.current.fill(0);
+      flattenDepth(depthSmoothedRef.current);
       if (depthTextureRef.current) {
-        (depthTextureRef.current.image.data as Uint8Array).fill(0);
+        flattenDepth(depthTextureRef.current.image.data as Uint8Array);
         depthTextureRef.current.needsUpdate = true;
       }
       cameraMixTargetRef.current = 1;
@@ -482,7 +490,12 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
     const fallbackTexture = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
     fallbackTexture.needsUpdate = true;
     fallbackTextureRef.current = fallbackTexture;
-    const depthTexture = new THREE.DataTexture(new Uint8Array(COLUMNS * ROWS), COLUMNS, ROWS, THREE.RedFormat);
+    const depthTexture = new THREE.DataTexture(
+      flattenDepth(new Uint8Array(COLUMNS * ROWS * DEPTH_CHANNELS)),
+      COLUMNS,
+      ROWS,
+      THREE.RGFormat,
+    );
     depthTexture.minFilter = THREE.LinearFilter;
     depthTexture.magFilter = THREE.LinearFilter;
     depthTexture.generateMipmaps = false;
@@ -593,17 +606,15 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
           float cameraRelief = ((center - 0.48) * 1.25 + edge * uDetail * 3.1) * uRelief;
           cameraRelief *= mix(1.0, -1.0, uInvert) * imprintMask;
           vec2 depthUv = vec2(imprintUv.x, 1.0 - imprintUv.y);
-          float depthSample = texture2D(uDepth, depthUv).r;
-          float depthBase = pow(depthSample, 0.82) * uRelief * 0.72;
+          // R: sitter pressed linearly into the pins. G: feature-scale relief
+          // (nose, lips, brow) computed in the depth worker, 0.5 = flat.
+          vec2 depthTexel = texture2D(uDepth, depthUv).rg;
+          float depthSample = depthTexel.r;
+          float depthBase = depthSample * uRelief * 0.72;
           float depthRelief = depthBase * imprintMask;
-          vec2 depthPx = vec2(1.0 / 96.0, 1.0 / 64.0);
-          float depthNeighbors = texture2D(uDepth, depthUv + vec2(depthPx.x, 0.0)).r
-            + texture2D(uDepth, depthUv - vec2(depthPx.x, 0.0)).r
-            + texture2D(uDepth, depthUv + vec2(0.0, depthPx.y)).r
-            + texture2D(uDepth, depthUv - vec2(0.0, depthPx.y)).r;
-          float depthCurvature = depthSample - depthNeighbors * 0.25;
+          float featureRelief = depthTexel.g * 2.0 - 1.0;
           float detailGate = smoothstep(0.05, 0.26, depthSample);
-          float localDepthDetail = depthCurvature * uDetail * 0.95 * uRelief;
+          float localDepthDetail = featureRelief * uDetail * 0.12 * uRelief;
           float cameraMicroDetail = edge * uDetail * 0.58 * uRelief;
           depthRelief += (localDepthDetail + cameraMicroDetail) * detailGate;
           cameraRelief = mix(cameraRelief, depthRelief, uUseDepth);
@@ -625,7 +636,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         `,
       );
     };
-    material.customProgramCacheKey = () => 'pinform-camera-relief-v7';
+    material.customProgramCacheKey = () => 'pinform-camera-relief-v8';
 
     const pins = new THREE.InstancedMesh(geometry, material, COLUMNS * ROWS);
     const matrix = new THREE.Matrix4();

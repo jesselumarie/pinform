@@ -9,7 +9,7 @@ import {
   DEPTH_MODEL_INPUT_WIDTH,
   tuneDepthProcessor,
 } from './depth-performance';
-import { downsampleDepth, normalizeNearDepth } from './depth-processing';
+import { downsampleDepth, featureRelief, normalizeNearDepth } from './depth-processing';
 
 const INPUT_WIDTH = DEPTH_FRAME_WIDTH;
 const INPUT_HEIGHT = DEPTH_FRAME_HEIGHT;
@@ -70,7 +70,14 @@ async function predictRelief(estimator: DepthEstimator) {
   const width = prediction.dims.at(-1) ?? INPUT_WIDTH;
   const dense = new Float32Array(prediction.data as Float32Array);
   const pinDepth = downsampleDepth(dense, width, height, PIN_WIDTH, PIN_HEIGHT);
-  return normalizeNearDepth(pinDepth);
+  const pressed = normalizeNearDepth(pinDepth);
+  const feature = featureRelief(pressed, PIN_WIDTH, PIN_HEIGHT);
+  const relief = new Uint8Array(pressed.length * 2);
+  for (let index = 0; index < pressed.length; index += 1) {
+    relief[index * 2] = pressed[index];
+    relief[index * 2 + 1] = feature[index];
+  }
+  return relief;
 }
 
 worker.addEventListener('message', async (event: MessageEvent<
