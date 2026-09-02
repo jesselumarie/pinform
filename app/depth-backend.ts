@@ -1,11 +1,24 @@
 export type DepthBackend = 'webgpu' | 'wasm';
+export type DepthModel = 'da3' | 'v2';
 
-export function depthBackendOrder(hasWebGPU: boolean): DepthBackend[] {
-  return hasWebGPU ? ['webgpu', 'wasm'] : ['wasm'];
+export interface DepthEngine {
+  backend: DepthBackend;
+  model: DepthModel;
 }
 
-export function depthBackendForAttempt(hasWebGPU: boolean, attempt: number): DepthBackend | null {
-  return depthBackendOrder(hasWebGPU)[attempt] ?? null;
+/**
+ * Depth Anything 3 Small resolves real facial geometry (nose, lips, brow) but
+ * only ships fp32 weights, so it runs on WebGPU. Depth Anything V2 Small is the
+ * lighter fallback: on WebGPU if DA3 fails there, and on WASM everywhere else.
+ */
+export function depthEngineOrder(hasWebGPU: boolean): DepthEngine[] {
+  const compatibility: DepthEngine = { backend: 'wasm', model: 'v2' };
+  if (!hasWebGPU) return [compatibility];
+  return [{ backend: 'webgpu', model: 'da3' }, { backend: 'webgpu', model: 'v2' }, compatibility];
+}
+
+export function depthEngineForAttempt(hasWebGPU: boolean, attempt: number): DepthEngine | null {
+  return depthEngineOrder(hasWebGPU)[attempt] ?? null;
 }
 
 export function summarizeDepthError(message: string) {

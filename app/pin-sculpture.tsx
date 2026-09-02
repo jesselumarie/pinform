@@ -4,7 +4,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { classifyCameraError, type CameraIssue } from './camera';
-import { depthBackendForAttempt, type DepthBackend } from './depth-backend';
+import { depthEngineForAttempt, depthEngineOrder, type DepthBackend, type DepthModel } from './depth-backend';
 import {
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
@@ -95,7 +95,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
   const depthWorkerRef = useRef<Worker | null>(null);
   const depthReadyRef = useRef(false);
   const depthBackendRef = useRef<DepthBackend>('webgpu');
-  const depthPreferCompatibilityRef = useRef(false);
+  const depthNextAttemptRef = useRef(0);
   const startDepthAttemptRef = useRef<(attempt: number, lastError?: string) => void>(() => undefined);
   const depthPendingRef = useRef(false);
   const depthTimerRef = useRef<number | null>(null);
@@ -185,8 +185,8 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
 
   const startDepthAttempt = useCallback((attempt: number, lastError?: string) => {
     const hasWebGPU = 'gpu' in navigator;
-    const backend = depthBackendForAttempt(hasWebGPU, attempt);
-    if (!backend) {
+    const engine = depthEngineForAttempt(hasWebGPU, attempt);
+    if (!engine) {
       onDiagnostic('depth.exhausted', lastError);
       onDepthProgress(null);
       onDepthError(lastError ?? 'No compatible depth backend is available.');
@@ -199,7 +199,8 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
     depthProgressBucketRef.current = -1;
     depthFrameCountRef.current = 0;
     depthLastFrameAtRef.current = 0;
-    onDiagnostic('depth.backend_attempt', `backend=${backend} attempt=${attempt + 1}`);
+    const { backend, model } = engine;
+    onDiagnostic('depth.backend_attempt', `backend=${backend} model=${model} attempt=${attempt + 1}`);
     onDepthError(null);
     onDepthStatus('loading');
     onDepthProgress(0);
@@ -225,8 +226,9 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
       depthReadyRef.current = false;
       worker.terminate();
       depthWorkerRef.current = null;
-      onDiagnostic('depth.backend_failed', `backend=${backend} message=${message}`);
-      if (backend === 'webgpu') depthPreferCompatibilityRef.current = true;
+      onDiagnostic('depth.backend_failed', `backend=${backend} model=${model} message=${message}`);
+      // Do not retry a failed engine this session, but always leave the last one available.
+      depthNextAttemptRef.current = Math.min(attempt + 1, depthEngineOrder(hasWebGPU).length - 1);
       startDepthAttemptRef.current(attempt + 1, message);
     };
     worker.addEventListener('error', (event) => {
@@ -237,6 +239,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
       type: string;
       relief?: ArrayBuffer;
       backend?: DepthBackend;
+      model?: DepthModel;
       progress?: number;
       message?: string;
       inferenceMs?: number;
@@ -250,12 +253,12 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         onDepthProgress(null);
         onDiagnostic(
           'depth.ready',
-          `backend=${depthBackendRef.current} warmup_ms=${event.data.warmupMs ?? 'unknown'}`,
+          `backend=${depthBackendRef.current} model=${event.data.model ?? model} warmup_ms=${event.data.warmupMs ?? 'unknown'}`,
         );
         onDepthStatus(depthBackendRef.current === 'wasm' ? 'ready-cpu' : 'ready-gpu');
         scheduleDepthFrame();
       } else if (event.data.type === 'warming') {
-        onDiagnostic('depth.warmup', `backend=${backend} input=${event.data.inputSize ?? 'unknown'}`);
+        onDiagnostic('depth.warmup', `backend=${backend} model=${model} input=${event.data.inputSize ?? 'unknown'}`);
         onDepthProgress(null);
         onDepthStatus('warming');
       } else if (event.data.type === 'progress' && typeof event.data.progress === 'number') {
@@ -274,7 +277,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         if (frame <= 3 || frame % 10 === 0) {
           onDiagnostic(
             'depth.frame',
-            `backend=${backend} frame=${frame} inference_ms=${event.data.inferenceMs ?? 'unknown'} interval_ms=${interval}`,
+            `backend=${backend} model=${model} frame=${frame} inference_ms=${event.data.inferenceMs ?? 'unknown'} interval_ms=${interval}`,
           );
         }
         depthPendingRef.current = false;
@@ -284,7 +287,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
         failAttempt(event.data.message);
       }
     });
-    worker.postMessage({ type: 'load', backend });
+    worker.postMessage({ type: 'load', backend, model });
   }, [onDepthError, onDepthProgress, onDepthStatus, onDiagnostic, scheduleDepthFrame, updateDepthTexture]);
   startDepthAttemptRef.current = startDepthAttempt;
 
@@ -299,8 +302,7 @@ const PinSculpture = forwardRef<PinSculptureHandle, PinSculptureProps>(function 
       onDepthStatus('loading');
       return;
     }
-    const hasWebGPU = 'gpu' in navigator;
-    startDepthAttempt(hasWebGPU && depthPreferCompatibilityRef.current ? 1 : 0);
+    startDepthAttempt(depthNextAttemptRef.current);
   }, [onDepthProgress, onDepthStatus, scheduleDepthFrame, startDepthAttempt]);
 
   const teardownLiveStream = useCallback(() => {

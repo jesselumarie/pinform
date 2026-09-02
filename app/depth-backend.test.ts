@@ -1,24 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { depthBackendForAttempt, depthBackendOrder, summarizeDepthError } from './depth-backend.ts';
+import { depthEngineForAttempt, depthEngineOrder, summarizeDepthError } from './depth-backend.ts';
 
-test('prefers WebGPU and keeps a CPU compatibility fallback', () => {
-  assert.deepEqual(depthBackendOrder(true), ['webgpu', 'wasm']);
+test('runs Depth Anything 3 on WebGPU and keeps V2 Small as the lighter fallbacks', () => {
+  assert.deepEqual(depthEngineOrder(true), [
+    { backend: 'webgpu', model: 'da3' },
+    { backend: 'webgpu', model: 'v2' },
+    { backend: 'wasm', model: 'v2' },
+  ]);
 });
 
-test('uses the CPU backend when WebGPU is unavailable', () => {
-  assert.deepEqual(depthBackendOrder(false), ['wasm']);
+test('uses V2 Small on the CPU backend when WebGPU is unavailable', () => {
+  assert.deepEqual(depthEngineOrder(false), [{ backend: 'wasm', model: 'v2' }]);
 });
 
-test('moves a failed WebGPU attempt to a fresh WASM worker', () => {
-  assert.equal(depthBackendForAttempt(true, 0), 'webgpu');
-  assert.equal(depthBackendForAttempt(true, 1), 'wasm');
-  assert.equal(depthBackendForAttempt(true, 2), null);
-});
-
-test('does not retry WASM when it was the first available backend', () => {
-  assert.equal(depthBackendForAttempt(false, 0), 'wasm');
-  assert.equal(depthBackendForAttempt(false, 1), null);
+test('moves a failed attempt to the next engine and stops after the last one', () => {
+  assert.deepEqual(depthEngineForAttempt(true, 1), { backend: 'webgpu', model: 'v2' });
+  assert.deepEqual(depthEngineForAttempt(true, 2), { backend: 'wasm', model: 'v2' });
+  assert.equal(depthEngineForAttempt(true, 3), null);
+  assert.equal(depthEngineForAttempt(false, 1), null);
 });
 
 test('turns opaque runtime failures into a useful persistent status', () => {

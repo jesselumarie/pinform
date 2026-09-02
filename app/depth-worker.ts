@@ -1,7 +1,13 @@
 /// <reference lib="webworker" />
 
-import { pipeline } from '@huggingface/transformers';
-import type { DepthBackend } from './depth-backend';
+import {
+  AutoModelForDepthEstimation,
+  AutoProcessor,
+  pipeline,
+  RawImage,
+  type Tensor,
+} from '@huggingface/transformers';
+import type { DepthEngine } from './depth-backend';
 import {
   DEPTH_FRAME_HEIGHT,
   DEPTH_FRAME_WIDTH,
@@ -15,37 +21,80 @@ const INPUT_WIDTH = DEPTH_FRAME_WIDTH;
 const INPUT_HEIGHT = DEPTH_FRAME_HEIGHT;
 const PIN_WIDTH = 96;
 const PIN_HEIGHT = 64;
-const MODEL_ID = 'onnx-community/depth-anything-v2-small-ONNX';
+/** Depth Anything 3 Small: real facial geometry. fp32 only (~100 MB), so WebGPU. */
+const DA3_MODEL_ID = 'onnx-community/depth-anything-v3-small';
+/** Depth Anything V2 Small: the light fallback (~26 MB q4, ~37 MB q8). Also lends DA3 its image processor. */
+const V2_MODEL_ID = 'onnx-community/depth-anything-v2-small-ONNX';
 
-type DepthEstimator = Awaited<ReturnType<typeof pipeline<'depth-estimation'>>>;
+interface DepthPrediction {
+  /** Larger means nearer, whichever quantity the model predicts. */
+  nearness: Float32Array;
+  width: number;
+  height: number;
+}
+type DepthEstimator = (image: RawImage) => Promise<DepthPrediction>;
+
 let estimatorPromise: Promise<DepthEstimator> | null = null;
-let selectedBackend: DepthBackend | null = null;
+let selectedEngine: DepthEngine | null = null;
 const canvas = new OffscreenCanvas(INPUT_WIDTH, INPUT_HEIGHT);
 const context = canvas.getContext('2d', { alpha: false });
 const worker = self as DedicatedWorkerGlobalScope;
 
-async function createEstimator(backend: DepthBackend) {
-  const estimator = await pipeline('depth-estimation', MODEL_ID, {
-    device: backend,
-    dtype: backend === 'webgpu' ? 'q4' : 'q8',
-    progress_callback: (progress) => {
-      if (progress.status === 'progress_total') {
-        worker.postMessage({ type: 'progress', progress: Math.round(progress.progress), backend });
-      }
-    },
-  });
-  if (!tuneDepthProcessor(estimator)) {
-    throw new Error('The depth model image processor is unavailable.');
-  }
-  return estimator;
+function reportProgress(engine: DepthEngine) {
+  return (progress: { status: string; progress?: number }) => {
+    if (progress.status === 'progress_total') {
+      worker.postMessage({ type: 'progress', progress: Math.round(progress.progress ?? 0), ...engine });
+    }
+  };
 }
 
-function loadEstimator(backend: DepthBackend) {
-  if (selectedBackend && selectedBackend !== backend) {
-    throw new Error('A depth worker cannot change backends after initialization.');
+async function createEstimator(engine: DepthEngine): Promise<DepthEstimator> {
+  const progress_callback = reportProgress(engine);
+  if (engine.model === 'da3') {
+    // The DA3 repo ships no preprocessor config; it uses the same DINOv2 normalization as V2.
+    const processor = await AutoProcessor.from_pretrained(V2_MODEL_ID, { progress_callback });
+    if (!tuneDepthProcessor({ processor })) throw new Error('The depth model image processor is unavailable.');
+    const model = await AutoModelForDepthEstimation.from_pretrained(DA3_MODEL_ID, {
+      device: engine.backend,
+      dtype: 'fp32',
+      progress_callback,
+    });
+    return async (image) => {
+      const inputs = await processor(image);
+      // DA3 is an any-view model: (batch, views, channels, height, width).
+      inputs.pixel_values = inputs.pixel_values.unsqueeze(1);
+      const { predicted_depth } = (await model(inputs)) as { predicted_depth: Tensor };
+      // DA3 predicts depth (nearer = smaller); the relief wants nearer = larger.
+      return {
+        nearness: Float32Array.from(predicted_depth.data as Float32Array, (value) => -value),
+        width: predicted_depth.dims.at(-1) ?? DEPTH_MODEL_INPUT_WIDTH,
+        height: predicted_depth.dims.at(-2) ?? DEPTH_MODEL_INPUT_HEIGHT,
+      };
+    };
   }
-  selectedBackend = backend;
-  estimatorPromise ??= createEstimator(backend);
+
+  const estimator = await pipeline('depth-estimation', V2_MODEL_ID, {
+    device: engine.backend,
+    dtype: engine.backend === 'webgpu' ? 'q4' : 'q8',
+    progress_callback,
+  });
+  if (!tuneDepthProcessor(estimator)) throw new Error('The depth model image processor is unavailable.');
+  return async (image) => {
+    const { predicted_depth } = await estimator(image);
+    return {
+      nearness: predicted_depth.data as Float32Array,
+      width: predicted_depth.dims.at(-1) ?? INPUT_WIDTH,
+      height: predicted_depth.dims.at(-2) ?? INPUT_HEIGHT,
+    };
+  };
+}
+
+function loadEstimator(engine: DepthEngine) {
+  if (selectedEngine && (selectedEngine.backend !== engine.backend || selectedEngine.model !== engine.model)) {
+    throw new Error('A depth worker cannot change engines after initialization.');
+  }
+  selectedEngine = engine;
+  estimatorPromise ??= createEstimator(engine);
   return estimatorPromise;
 }
 
@@ -64,12 +113,8 @@ function drawWarmupFrame() {
 }
 
 async function predictRelief(estimator: DepthEstimator) {
-  const result = await estimator(canvas);
-  const prediction = result.predicted_depth;
-  const height = prediction.dims.at(-2) ?? INPUT_HEIGHT;
-  const width = prediction.dims.at(-1) ?? INPUT_WIDTH;
-  const dense = new Float32Array(prediction.data as Float32Array);
-  const pinDepth = downsampleDepth(dense, width, height, PIN_WIDTH, PIN_HEIGHT);
+  const { nearness, width, height } = await estimator(await RawImage.read(canvas));
+  const pinDepth = downsampleDepth(nearness, width, height, PIN_WIDTH, PIN_HEIGHT);
   const pressed = normalizeNearDepth(pinDepth);
   const feature = featureRelief(pressed, PIN_WIDTH, PIN_HEIGHT);
   const relief = new Uint8Array(pressed.length * 2);
@@ -81,14 +126,15 @@ async function predictRelief(estimator: DepthEstimator) {
 }
 
 worker.addEventListener('message', async (event: MessageEvent<
-  { type: 'load'; backend: DepthBackend } | { type: 'estimate'; bitmap: ImageBitmap }
+  ({ type: 'load' } & DepthEngine) | { type: 'estimate'; bitmap: ImageBitmap }
 >) => {
   if (event.data.type === 'load') {
+    const engine: DepthEngine = { backend: event.data.backend, model: event.data.model };
     try {
-      const estimator = await loadEstimator(event.data.backend);
+      const estimator = await loadEstimator(engine);
       worker.postMessage({
         type: 'warming',
-        backend: event.data.backend,
+        ...engine,
         inputSize: `${DEPTH_MODEL_INPUT_WIDTH}x${DEPTH_MODEL_INPUT_HEIGHT}`,
       });
       drawWarmupFrame();
@@ -96,13 +142,13 @@ worker.addEventListener('message', async (event: MessageEvent<
       await predictRelief(estimator);
       worker.postMessage({
         type: 'ready',
-        backend: event.data.backend,
+        ...engine,
         warmupMs: Math.round(performance.now() - startedAt),
       });
     } catch (error) {
       worker.postMessage({
         type: 'error',
-        backend: event.data.backend,
+        ...engine,
         message: error instanceof Error ? error.message : 'Depth model failed to load.',
       });
     }
@@ -117,8 +163,8 @@ worker.addEventListener('message', async (event: MessageEvent<
   }
 
   try {
-    if (!selectedBackend) throw new Error('Depth model has not been initialized.');
-    const estimator = await loadEstimator(selectedBackend);
+    if (!selectedEngine) throw new Error('Depth model has not been initialized.');
+    const estimator = await loadEstimator(selectedEngine);
     context.drawImage(bitmap, 0, 0, INPUT_WIDTH, INPUT_HEIGHT);
     bitmap.close();
     const startedAt = performance.now();

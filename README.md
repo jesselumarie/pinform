@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Camera access requires `localhost` or HTTPS. The first AI-depth run downloads the on-device model and may take a moment to warm up.
+Camera access requires `localhost` or HTTPS. The first AI-depth run downloads the on-device model and may take a moment to warm up: Depth Anything 3 Small (about 100 MB) on WebGPU, or Depth Anything V2 Small (about 26 MB) as the fallback.
 
 ## Verify and build
 
